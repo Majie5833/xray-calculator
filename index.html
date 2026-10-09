@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0f1e">
+<title>晒单透视计算器</title>
+<style>
+:root{--bg:#0a0f1e;--card:#141c30;--card2:#0d1424;--line:#243050;--txt:#e8edf6;--dim:#8b9bb4;--ok:#34d399;--warn:#fbbf24;--bad:#f87171;--acc:#60a5fa;--gold:#f5c542}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:linear-gradient(180deg,#0a0f1e,#0c1226);color:var(--txt);font-family:-apple-system,"PingFang SC",sans-serif;padding-bottom:40px;min-height:100vh}
+header{padding:16px 15px 10px;border-bottom:1px solid var(--line)}
+header h1{font-size:18px}header .sub{font-size:11px;color:var(--dim);margin-top:3px}
+main{padding:12px 13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:11px}
+.card h2{font-size:13px;margin-bottom:10px}
+input,select{background:#0a1020;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px;font-size:14px;width:100%}
+.row{display:flex;gap:8px;margin-bottom:9px}.row>*{flex:1}
+.field{margin-bottom:9px}.field label{display:block;font-size:11px;color:var(--dim);margin-bottom:4px}
+.btn{width:100%;border:0;border-radius:11px;padding:12px;font-size:14px;font-weight:700;background:var(--gold);color:#1a1408;margin-top:6px}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--dim)}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.kcell{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px}
+.kcell .v{font-size:20px;font-weight:800}.kcell .k{font-size:10.5px;color:var(--dim);margin-top:2px;line-height:1.4}
+.big{grid-column:1/-1;text-align:center;padding:16px}
+.big .v{font-size:34px}.big .k{font-size:12px}
+.alert{border-left:4px solid var(--bad);background:#1d0f12;padding:11px 13px;border-radius:9px;font-size:12.5px;margin-bottom:8px;line-height:1.65}
+.alert.warn{border-color:var(--warn);background:#1d180d}
+.alert.ok{border-color:var(--ok);background:#0d1d15}
+.bar{height:14px;border-radius:7px;background:#0a1020;overflow:hidden;margin:6px 0 2px;border:1px solid var(--line)}
+.bar i{display:block;height:100%;border-radius:7px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:6px 4px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-size:10px}
+.phil{font-size:12.5px;line-height:1.9}
+.phil b{color:var(--gold)}
+pre{background:#080d18;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:11px;overflow-x:auto;line-height:1.7;color:#c7d2e5;font-family:Menlo,monospace;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header><h1>🔍 晒单透视计算器</h1><div class="sub">任何胜率神话，两个数字就能审判：胜率 p × 盈亏比 R</div></header>
+<main>
+
+<div class="card">
+  <h2>输入晒单上的数字</h2>
+  <div class="row">
+    <div class="field"><label>胜率 p (%)</label><input id="p" type="number" value="81.7" step="0.1"></div>
+    <div class="field"><label>平均盈亏比 R（赚/亏）</label><input id="r" type="number" value="0.15" step="0.01"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>单笔风险（占账户 %）</label><input id="f" type="number" value="2" step="0.1"></div>
+    <div class="field"><label>交易笔数（验证样本）</label><input id="n" type="number" value="588"></div>
+  </div>
+  <div class="field"><label>预设情景</label><select id="preset" onchange="applyP()">
+    <option value="">— 手动输入 —</option>
+    <option value="grid">网格/马丁晒单（81%胜率 R=0.15）</option>
+    <option value="trend">顺势趋势策略（40%胜率 R=3）</option>
+    <option value="fair">均匀策略（50% R=1）</option>
+    <option value="scam">经典杀猪盘（95% R=0.05）</option>
+  </select></div>
+  <button class="btn" onclick="run()">透视它</button>
+  <button class="btn ghost" onclick="sim()">再跑 10000 笔蒙特卡洛</button>
+</div>
+
+<div class="card" id="outCard" style="display:none">
+  <h2>⚖️ 审判结果</h2>
+  <div class="kpi">
+    <div class="kcell big"><div class="v" id="ev">—</div><div class="k">单笔期望值 E = p×R − (1−p)<br><b style="color:var(--gold)">&gt;0 才能活，≤0 必死</b></div></div>
+    <div class="kcell"><div class="v" id="rr">—</div><div class="k">保本胜率门槛<br>p* = 1/(1+R)</div></div>
+    <div class="kcell"><div class="v" id="marg">—</div><div class="k">胜率安全边际<br>离保本还有多远</div></div>
+    <div class="kcell"><div class="v" id="ruin">—</div><div class="k">连续亏损爆仓概率<br>（10000笔内，2%风险）</div></div>
+    <div class="kcell"><div class="v" id="streak">—</div><div class="k">10000笔内最长连亏</div></div>
+  </div>
+  <div id="verdict" style="margin-top:11px"></div>
+</div>
+
+<div class="card" id="simCard" style="display:none">
+  <h2>🎲 蒙特卡洛模拟（10000 笔 × 1000 条路径）</h2>
+  <div id="simOut"></div>
+</div>
+
+<div class="card">
+  <h2>🧠 为什么 81% 胜率会杀人</h2>
+  <div class="phil">
+  胜率 81.7%、盈亏比 0.15 意味着：<b>赢的时候赚 0.15，输的时候亏 1</b>。<br><br>
+  每次止损要吞掉 <b>≈6.7 次盈利</b>。它靠的是：胜率高到止损很少出现。<br><br>
+  但连亏概率是复利式的——p(连亏k) = (1−0.817)^k：<br>
+  连亏 3 次 = 0.62%／笔 → 588 笔里出现概率 ≈ 97%<br>
+  连亏 5 次 = 0.024%／笔 → 588 笔里仍有 ≈ 13%<br><br>
+  <b>这类策略不是不爆，是还没轮到它爆。</b>曲线越平滑，尾部越锋利。网格/马丁的死法从来不是慢慢亏，是一次插针清零。
+  </div>
+</div>
+
+<div class="card">
+  <h2>📋 速查：常见晒单画像</h2>
+  <table>
+    <tr><th>画像</th><th>p × R</th><th>判定</th></tr>
+    <tr><td>网格/马丁</td><td>80% × 0.15</td><td style="color:var(--bad)">E=+0.12 但尾部致命，模拟盘最爱</td></tr>
+    <tr><td>顺势趋势</td><td>40% × 3</td><td style="color:var(--ok)">E=+0.60，曲线难看但活得久</td></tr>
+    <tr><td>剥头皮吹牛</td><td>95% × 0.05</td><td style="color:var(--bad)">E=−0.0025，其实负期望</td></tr>
+    <tr><td>对半赌</td><td>50% × 1</td><td style="color:var(--warn)">E=0，加手续费必亏</td></tr>
+    <tr><td>杀猪盘</td><td>90% × 0.1</td><td style="color:var(--bad)">前 50 笔完美，第 51 笔全收</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>📐 依据</h2>
+  <pre>期望值   E = p×R − (1−p)
+保本胜率 p* = 1/(1+R)          (Kelly 前提)
+凯利仓位 f* = (p(1+R)−1)/R
+连亏k概率 = (1−p)^k（每笔独立）
+爆仓概率  = 蒙特卡洛 1000 条路径统计
+风险统一 2% 风险/笔，复利计算</pre>
+</div>
+
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function applyP(){
+  const v=$("preset").value;if(!v)return;
+  const map={grid:[81.7,0.15,2,588],trend:[40,3,1,588],fair:[50,1,1,588],scam:[95,0.05,2,588]};
+  const[m1,m2,m3,m4]=map[v];$("p").value=m1;$("r").value=m2;$("f").value=m3;$("n").value=m4;run();
+}
+function run(){
+  const p=(+$("p").value)/100,R=+$("r").value,f=(+$("f").value)/100,N=+$("n").value;
+  if(!(p>0&&p<100&&R>0&&f>0&&N>0)){alert("数字没填对");return}
+  $("outCard").style.display="";
+  const E=p*R-(1-p);
+  const ev=$("ev");ev.textContent=(E>=0?"+":"")+E.toFixed(4)+" /笔";
+  ev.style.color=E>0.05?"var(--ok)":E>0?"var(--warn)":"var(--bad)";
+  const pstar=1/(1+R);
+  $("rr").textContent=(pstar*100).toFixed(1)+"%";
+  const marg=(p-pstar)*100;
+  const mg=$("marg");mg.textContent=(marg>=0?"+":"")+marg.toFixed(1)+"pp";
+  mg.style.color=marg>10?"var(--ok)":marg>0?"var(--warn)":"var(--bad)";
+  // Monte Carlo ruin
+  const paths=1000;let ruined=0,maxStreak=0;
+  for(let i=0;i<paths;i++){
+    let eq=1,st=0,ms=0,dead=false;
+    for(let j=0;j<N;j++){
+      if(Math.random()<p){eq+=eq*f*R;st=0}
+      else{eq-=eq*f;st++;if(st>ms)ms=st;if(eq<=0.3){dead=true;break}}
+    }
+    if(dead)ruined++;maxStreak=Math.max(maxStreak,ms);
+  }
+  const rp=$("ruin");rp.textContent=(ruined/paths*100).toFixed(1)+"%";
+  rp.style.color=ruined/paths>0.3?"var(--bad)":ruined/paths>0.05?"var(--warn)":"var(--ok)";
+  $("streak").textContent=maxStreak+" 笔";
+  // verdict
+  let v="";
+  if(E<=0)v='<div class="alert"><b>负期望。这个策略在数学上必死。</b><br>每一笔交易平均亏 '+Math.abs(E).toFixed(4)+' 个单位风险。胜率再高也没用——你看到的盈利只是在消耗未来。笔数越多，死得越确定。</div>';
+  else if(marg<=0)v='<div class="alert"><b>胜率低于保本线。必死。</b><br>这个 R 下需要胜率 ≥'+(pstar*100).toFixed(1)+'%，实际只有 '+(p*100).toFixed(1)+'%。</div>';
+  else if(E>0&&R<0.5&&p>70)v='<div class="alert"><b>高胜率 × 低盈亏比 = 网格/马丁画像。</b><br>E 虽为 +'+E.toFixed(3)+'，但每次止损吞掉 '+(1/R).toFixed(1)+' 次盈利。10000 笔内最长连亏 '+maxStreak+' 笔 = 单次回撤 '+(maxStreak*f*100).toFixed(0)+'%。模拟盘曲线漂亮，实盘活不过一次极端行情。晒单里最常见的就是这个画像。</div>';
+  else if(E>0&&marg>10)v='<div class="alert ok"><b>结构健康。</b><br>E=+'+E.toFixed(3)+'，安全边际 +'+marg.toFixed(1)+'pp。注意：这是数学面，不代表实盘能拿到这个 p 和 R——实盘胜率通常比回测掉 5-15pp。</div>';
+  else v='<div class="alert warn"><b>勉强为正，但边际很薄。</b><br>E=+'+E.toFixed(3)+'，安全边际只有 +'+marg.toFixed(1)+'pp。实盘滑点、情绪偏差随时把期望打成负数。</div>';
+  if(N<100)v+='<div class="alert warn">样本只有 '+N+' 笔——<b>统计上不构成证据</b>。100 笔以内的胜率波动区间宽得能开进一辆卡车。</div>';
+  $("verdict").innerHTML=v;
+}
+function sim(){
+  const p=(+$("p").value)/100,R=+$("r").value,f=(+$("f").value)/100,N=+$("n").value;
+  $("simCard").style.display="";
+  const paths=1000;const finals=[];let ruined=0,maxDD=0;
+  for(let i=0;i<paths;i++){
+    let eq=1,peak=1,dd=0;
+    for(let j=0;j<N;j++){
+      if(Math.random()<p)eq+=eq*f*R;else eq-=eq*f;
+      if(eq<=0.3){ruined++;eq=0.3}
+      peak=Math.max(peak,eq);dd=Math.max(dd,1-eq/peak);
+      if(eq<=0.3)break;
+    }
+    finals.push(eq);maxDD=Math.max(maxDD,dd);
+  }
+  finals.sort((a,b)=>a-b);
+  const q=x=>finals[Math.floor(x*paths)];
+  const med=q(0.5),p5=q(0.05),p95=q(0.95);
+  const fmt=x=>x>=10?x.toFixed(0):x.toFixed(2)+"x";
+  $("simOut").innerHTML=
+   '<div class="kpi">'+
+   '<div class="kcell"><div class="v" style="color:'+(p5<1?"var(--bad)":"var(--ok)")+'">'+fmt(p5)+'</div><div class="k">最差 5% 结局（起步 1x）</div></div>'+
+   '<div class="kcell"><div class="v">'+fmt(med)+'</div><div class="k">中位数结局</div></div>'+
+   '<div class="kcell"><div class="v" style="color:var(--ok)">'+fmt(p95)+'</div><div class="k">最好 5% 结局</div></div>'+
+   '<div class="kcell"><div class="v" style="color:'+(ruined>50?"var(--bad)":ruined>5?"var(--warn)":"var(--ok)")+'">'+(ruined/10).toFixed(1)+'%</div><div class="k">路径爆仓率（净值跌 70%）</div></div>'+
+   '</div>'+
+   '<div class="phil" style="margin-top:10px">起点 1.00 → '+N+' 笔后：<br>一半的路径落在 <b>'+fmt(p5)+' ~ '+fmt(p95)+'</b> 之间。<br>最惨路径最大回撤 '+(maxDD*100).toFixed(1)+'%。<br><br>'+
+   (p5<1?'<b style="color:var(--bad)">注意：最差 5% 的结局是亏钱。晒单只给你看最好那条路径。</b>':'')+
+   '</div>';
+}
+</script>
+</body>
+</html>
